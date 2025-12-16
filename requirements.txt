@@ -6,8 +6,8 @@ seaborn
 emoji
 langdetect
 google-api-python-client
+snscrape
 
-# ML (Cloud-safe)
 torch
 transformers
 sentencepiece
