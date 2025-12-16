@@ -1,11 +1,13 @@
-streamlit==1.32.2
+streamlit
 pandas
+numpy
 matplotlib
-langdetect
+seaborn
 emoji
+langdetect
 google-api-python-client
 
-# ML dependencies (ORDER MATTERS)
-torch==2.1.2
-transformers==4.36.2
+# ML (Cloud-safe)
+torch
+transformers
 sentencepiece
