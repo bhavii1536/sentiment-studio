@@ -1,8 +1,11 @@
-streamlit
+streamlit==1.32.2
 pandas
 matplotlib
-transformers
-torch
 langdetect
 emoji
 google-api-python-client
+
+# ML dependencies (ORDER MATTERS)
+torch==2.1.2
+transformers==4.36.2
+sentencepiece
