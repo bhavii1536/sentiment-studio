@@ -6,7 +6,8 @@ seaborn
 emoji
 langdetect
 google-api-python-client
-snscrape
+
+snscrape==0.7.0.20230622
 
 torch
 transformers
