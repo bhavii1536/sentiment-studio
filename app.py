@@ -1,285 +1,219 @@
-# ==================================================
-# Sentiment Analysis Studio
-# Real-Time Media Opinion Analysis Using ML
-# ==================================================
-
 import streamlit as st
 import pandas as pd
+import numpy as np
 import matplotlib.pyplot as plt
-
+import seaborn as sns
+import emoji
 from langdetect import detect
+
 from transformers import pipeline
 from googleapiclient.discovery import build
-import snscrape.modules.twitter as sntwitter
 
-# ==================================================
-# PAGE CONFIG
-# ==================================================
-st.set_page_config(page_title="Sentiment Analysis Studio", layout="centered")
-
-st.title("📊 Sentiment Analysis Studio")
-st.subheader("Real-Time Media Opinion Analysis Using Machine Learning")
-st.write(
-    "Analyze public opinion from **CSV datasets, YouTube, and Twitter** "
-    "in **English, Tamil, and Hindi**."
+# ---------------- CONFIG ----------------
+st.set_page_config(
+    page_title="Sentiment Analysis Studio",
+    layout="wide"
 )
-st.markdown("---")
 
-# ==================================================
-# PASTEL COLORS
-# ==================================================
-PASTEL_COLORS = {
-    "Positive": "#A8E6CF",
-    "Neutral": "#FFD3B6",
-    "Negative": "#FFAAA5"
-}
+PASTEL_COLORS = ["#AEC6CF", "#FFB7B2", "#B5EAD7", "#CDB4DB", "#E2F0CB"]
 
-# ==================================================
-# LOAD MODELS (CACHED)
-# ==================================================
+# ---------------- MODELS ----------------
 @st.cache_resource
 def load_models():
     sentiment_en = pipeline(
-    "sentiment-analysis",
-    model="distilbert-base-uncased-finetuned-sst-2-english"
-)
+        "sentiment-analysis",
+        model="distilbert-base-uncased-finetuned-sst-2-english"
+    )
 
     sentiment_multi = pipeline(
         "sentiment-analysis",
         model="cardiffnlp/twitter-xlm-roberta-base-sentiment"
     )
-    return sentiment_en, sentiment_multi
+
+    emotion_model = pipeline(
+        "text-classification",
+        model="j-hartmann/emotion-english-distilroberta-base",
+        top_k=None
+    )
+
+    return sentiment_en, sentiment_multi, emotion_model
 
 
-sentiment_en, sentiment_multi = load_models()
+sentiment_en, sentiment_multi, emotion_model = load_models()
 
-# ==================================================
-# SENTIMENT FUNCTION
-# ==================================================
+# ---------------- YOUTUBE API ----------------
+YOUTUBE_API_KEY = st.secrets["YOUTUBE_API_KEY"]
+youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
+
+# ---------------- HELPERS ----------------
+def detect_language(text):
+    try:
+        return detect(text)
+    except:
+        return "en"
+
+
 def predict_sentiment(text):
-    if not text or str(text).strip() == "":
+    lang = detect_language(text)
+    model = sentiment_en if lang == "en" else sentiment_multi
+    label = model(text[:512])[0]["label"]
+
+    if label in ["LABEL_0", "NEGATIVE"]:
+        return "Negative"
+    elif label in ["LABEL_1", "NEUTRAL"]:
         return "Neutral"
+    else:
+        return "Positive"
 
-    text = str(text)
 
-    try:
-        lang = detect(text)
-    except:
-        lang = "en"
+def detect_emotions(texts):
+    emotions = []
+    for t in texts:
+        res = emotion_model(t[:512])[0]
+        emotions.append(res["label"])
+    return emotions
 
-    try:
-        if lang == "en":
-            out = sentiment_en(text[:512])[0]["label"]
-        else:
-            out = sentiment_multi(text[:512])[0]["label"]
-    except:
-        return "Neutral"
 
-    return {
-        "LABEL_0": "Negative",
-        "LABEL_1": "Neutral",
-        "LABEL_2": "Positive",
-        "negative": "Negative",
-        "neutral": "Neutral",
-        "positive": "Positive"
-    }.get(out, "Neutral")
+ASPECTS = {
+    "Price": ["price", "cost", "expensive", "cheap"],
+    "Quality": ["quality", "pure", "organic"],
+    "Packaging": ["packaging", "bottle", "box"],
+    "Smell": ["smell", "fragrance", "aroma"],
+    "Delivery": ["delivery", "shipping"]
+}
 
-# ==================================================
-# CHART HELPERS
-# ==================================================
-def pastel_pie_chart(counts, title):
-    colors = [PASTEL_COLORS.get(k, "#D3D3D3") for k in counts.index]
-    fig, ax = plt.subplots()
-    ax.pie(
-        counts.values,
-        labels=counts.index,
-        colors=colors,
-        autopct="%1.1f%%",
-        startangle=90
-    )
-    ax.axis("equal")
-    ax.set_title(title)
-    st.pyplot(fig)
 
-def pastel_bar_chart(df, title):
-    fig, ax = plt.subplots()
-    df.plot(kind="bar", ax=ax, color=["#B5EAD7", "#C7CEEA"])
-    ax.set_title(title)
-    ax.set_ylabel("Count")
-    st.pyplot(fig)
+def aspect_based_sentiment(texts):
+    rows = []
+    for t in texts:
+        tl = t.lower()
+        for aspect, keys in ASPECTS.items():
+            if any(k in tl for k in keys):
+                rows.append({
+                    "Aspect": aspect,
+                    "Sentiment": predict_sentiment(t)
+                })
+    return pd.DataFrame(rows)
 
-# ==================================================
-# YOUTUBE API
-# ==================================================
-def get_youtube_client():
-    return build("youtube", "v3", developerKey=st.secrets["YOUTUBE_API_KEY"])
 
-def search_youtube_videos(query, max_results=3):
-    yt = get_youtube_client()
-    req = yt.search().list(q=query, part="snippet", type="video", maxResults=max_results)
-    res = req.execute()
-    return [item["id"]["videoId"] for item in res.get("items", [])]
-
-def fetch_youtube_comments(video_id, max_comments=50):
-    yt = get_youtube_client()
+# ---------------- YOUTUBE FUNCTIONS ----------------
+def fetch_comments(video_id, limit=100):
     comments = []
-    req = yt.commentThreads().list(
-        part="snippet", videoId=video_id, maxResults=100, textFormat="plainText"
+    req = youtube.commentThreads().list(
+        part="snippet",
+        videoId=video_id,
+        maxResults=100
     )
     res = req.execute()
 
-    for item in res.get("items", []):
+    for item in res["items"][:limit]:
         comments.append(
             item["snippet"]["topLevelComment"]["snippet"]["textDisplay"]
         )
-        if len(comments) >= max_comments:
-            break
     return comments
 
-def analyze_product_youtube(topic):
-    vids = search_youtube_videos(topic)
-    data = []
-    for v in vids:
-        for c in fetch_youtube_comments(v):
-            data.append({"Text": c, "Sentiment": predict_sentiment(c)})
-    return pd.DataFrame(data)
 
-# ==================================================
-# TWITTER (snscrape)
-# ==================================================
-def analyze_product_twitter(topic, limit=100):
-    data = []
-    for i, tweet in enumerate(
-        sntwitter.TwitterSearchScraper(topic).get_items()
-    ):
-        if i >= limit:
-            break
-        data.append({
-            "Text": tweet.content,
-            "Sentiment": predict_sentiment(tweet.content)
-        })
-    return pd.DataFrame(data)
+def search_videos(query, limit=3):
+    res = youtube.search().list(
+        q=query,
+        part="id",
+        type="video",
+        maxResults=limit
+    ).execute()
 
-# ==================================================
-# YOUTUBE CHANNEL INSIGHTS
-# ==================================================
-def get_channel_id(channel_name):
-    yt = get_youtube_client()
-    req = yt.search().list(
-        q=channel_name, part="snippet", type="channel", maxResults=1
-    )
-    res = req.execute()
-    if not res["items"]:
-        return None
-    return res["items"][0]["id"]["channelId"]
-
-def get_channel_stats(channel_id):
-    yt = get_youtube_client()
-    req = yt.channels().list(part="statistics", id=channel_id)
-    res = req.execute()
-    stats = res["items"][0]["statistics"]
-    return {
-        "Subscribers": int(stats.get("subscriberCount", 0)),
-        "Total Views": int(stats.get("viewCount", 0)),
-        "Total Videos": int(stats.get("videoCount", 0))
-    }
-
-def get_recent_videos(channel_id, max_results=3):
-    yt = get_youtube_client()
-    req = yt.search().list(
-        part="id", channelId=channel_id,
-        order="date", type="video", maxResults=max_results
-    )
-    res = req.execute()
     return [i["id"]["videoId"] for i in res["items"]]
 
-def analyze_channel_sentiment(channel_id):
-    data = []
-    for vid in get_recent_videos(channel_id):
-        for c in fetch_youtube_comments(vid):
-            data.append({"Text": c, "Sentiment": predict_sentiment(c)})
-    return pd.DataFrame(data)
 
-# ==================================================
-# INPUT TYPE
-# ==================================================
-input_type = st.selectbox(
-    "Choose analysis type:",
+# ---------------- UI ----------------
+st.title("📊 Sentiment Analysis Studio")
+st.caption("Real-Time Media Opinion Analysis Using Machine Learning")
+
+mode = st.selectbox(
+    "Choose Analysis Type",
     [
-        "CSV File Upload",
-        "Product / Topic Analysis",
-        "YouTube Channel Insights"
+        "Product / Topic Analysis (YouTube)",
+        "YouTube Channel Insights",
+        "CSV Upload Analysis"
     ]
 )
 
-st.markdown("---")
+# ---------- PRODUCT / TOPIC ----------
+if mode == "Product / Topic Analysis (YouTube)":
+    topic = st.text_input("Enter product / topic")
 
-# ==================================================
-# INPUT UI
-# ==================================================
-uploaded_file = None
-topic_input = None
-channel_name = None
+    if st.button("Analyze"):
+        vids = search_videos(topic)
+        all_comments = []
 
-if input_type == "CSV File Upload":
-    uploaded_file = st.file_uploader("Upload CSV (must contain 'text' column)", type=["csv"])
+        for v in vids:
+            all_comments.extend(fetch_comments(v))
 
-elif input_type == "Product / Topic Analysis":
-    topic_input = st.text_input("Enter product / topic / hashtag")
+        df = pd.DataFrame({
+            "Text": all_comments,
+            "Sentiment": [predict_sentiment(t) for t in all_comments]
+        })
 
-elif input_type == "YouTube Channel Insights":
-    channel_name = st.text_input("Enter YouTube channel name")
+        st.subheader("📊 Sentiment Distribution")
+        fig, ax = plt.subplots()
+        df["Sentiment"].value_counts().plot(
+            kind="pie",
+            autopct="%1.1f%%",
+            colors=PASTEL_COLORS,
+            ax=ax
+        )
+        ax.axis("equal")
+        st.pyplot(fig)
 
-# ==================================================
-# ANALYZE BUTTON
-# ==================================================
-if st.button("Analyze"):
+        st.subheader("🧠 Aspect-Based Sentiment")
+        absa = aspect_based_sentiment(all_comments)
+        if not absa.empty:
+            st.bar_chart(absa.value_counts().unstack().fillna(0))
 
-    # ---------- CSV ----------
-    if input_type == "CSV File Upload":
-        if not uploaded_file:
-            st.warning("Upload a CSV file")
+        st.subheader("😊 Emotion Detection")
+        emotions = detect_emotions(all_comments)
+        emo_df = pd.Series(emotions).value_counts()
+
+        fig2, ax2 = plt.subplots()
+        emo_df.plot(kind="bar", color=PASTEL_COLORS, ax=ax2)
+        st.pyplot(fig2)
+
+# ---------- CHANNEL INSIGHTS ----------
+elif mode == "YouTube Channel Insights":
+    channel_name = st.text_input("Enter Channel Name")
+
+    if st.button("Analyze Channel"):
+        res = youtube.search().list(
+            q=channel_name,
+            part="snippet",
+            type="channel",
+            maxResults=1
+        ).execute()
+
+        channel_id = res["items"][0]["snippet"]["channelId"]
+
+        stats = youtube.channels().list(
+            part="statistics",
+            id=channel_id
+        ).execute()["items"][0]["statistics"]
+
+        st.metric("Subscribers", stats["subscriberCount"])
+        st.metric("Total Views", stats["viewCount"])
+
+# ---------- CSV ----------
+else:
+    file = st.file_uploader("Upload CSV (text, label optional)", type="csv")
+
+    if file:
+        df = pd.read_csv(file)
+        if "text" not in df.columns:
+            st.error("CSV must contain 'text' column")
         else:
-            df = pd.read_csv(uploaded_file)
-            if "text" not in df.columns:
-                st.error("CSV must contain 'text' column")
-            else:
-                df["Sentiment"] = df["text"].astype(str).apply(predict_sentiment)
-                st.dataframe(df.head(20))
-                pastel_pie_chart(df["Sentiment"].value_counts(), "Sentiment Distribution")
+            df["Sentiment"] = df["text"].apply(predict_sentiment)
 
-    # ---------- PRODUCT / TOPIC ----------
-    elif input_type == "Product / Topic Analysis":
-        yt_df = analyze_product_youtube(topic_input)
-        tw_df = analyze_product_twitter(topic_input)
-
-        st.subheader("📊 YouTube Sentiment")
-        pastel_pie_chart(yt_df["Sentiment"].value_counts(), "YouTube")
-
-        st.subheader("📊 Twitter Sentiment")
-        pastel_pie_chart(tw_df["Sentiment"].value_counts(), "Twitter")
-
-        comp = pd.DataFrame({
-            "YouTube": yt_df["Sentiment"].value_counts(),
-            "Twitter": tw_df["Sentiment"].value_counts()
-        }).fillna(0)
-
-        pastel_bar_chart(comp, "Platform Comparison")
-
-    # ---------- CHANNEL ----------
-    elif input_type == "YouTube Channel Insights":
-        cid = get_channel_id(channel_name)
-        if not cid:
-            st.error("Channel not found")
-        else:
-            stats = get_channel_stats(cid)
-            df = analyze_channel_sentiment(cid)
-
-            st.metric("Subscribers", stats["Subscribers"])
-            st.metric("Total Views", stats["Total Views"])
-            st.metric("Total Videos", stats["Total Videos"])
-
-            pastel_pie_chart(df["Sentiment"].value_counts(), "Audience Sentiment")
-
-st.markdown("---")
-st.caption("Sentiment Analysis Studio | Real-Time Media Opinion Analysis Using ML")
+            fig, ax = plt.subplots()
+            df["Sentiment"].value_counts().plot(
+                kind="bar",
+                color=PASTEL_COLORS,
+                ax=ax
+            )
+            st.pyplot(fig)
