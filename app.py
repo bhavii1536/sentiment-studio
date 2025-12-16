@@ -40,9 +40,10 @@ PASTEL_COLORS = {
 @st.cache_resource
 def load_models():
     sentiment_en = pipeline(
-        "sentiment-analysis",
-        model="cardiffnlp/twitter-roberta-base-sentiment"
-    )
+    "sentiment-analysis",
+    model="distilbert-base-uncased-finetuned-sst-2-english"
+)
+
     sentiment_multi = pipeline(
         "sentiment-analysis",
         model="cardiffnlp/twitter-xlm-roberta-base-sentiment"
