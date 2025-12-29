@@ -14,25 +14,48 @@ st.set_page_config(
 )
 
 # ===============================
-# CUSTOM CSS (FONT + CENTER)
+# CUSTOM CSS (FONT + EMOJI SIDES)
 # ===============================
 st.markdown("""
 <style>
 html, body, [class*="css"] {
     font-size: 14px;
 }
+
 .block-container {
     padding-top: 2rem;
+}
+
+.emoji-column {
+    font-size: 28px;
+    line-height: 2.2;
+    opacity: 0.35;
+    text-align: center;
 }
 </style>
 """, unsafe_allow_html=True)
 
 # ===============================
-# CENTER LAYOUT
+# CENTER LAYOUT WITH EMOJI SIDES
 # ===============================
 left_space, main_col, right_space = st.columns([1, 4, 1])
 
+with left_space:
+    st.markdown(
+        "<div class='emoji-column'>😊<br>😐<br>😡<br>🤔<br>😍<br>😢</div>",
+        unsafe_allow_html=True
+    )
+
+with right_space:
+    st.markdown(
+        "<div class='emoji-column'>😍<br>😮<br>😐<br>😊<br>😡<br>🤔</div>",
+        unsafe_allow_html=True
+    )
+
 with main_col:
+    # ===============================
+    # HEADER
+    # ===============================
     st.title("📊 Sentiment Analysis Studio")
     st.caption("Real-Time Media Opinion Analysis Using Machine Learning")
 
@@ -95,7 +118,10 @@ with main_col:
             tl = t.lower()
             for a, keys in ASPECTS.items():
                 if any(k in tl for k in keys):
-                    rows.append({"Aspect": a, "Sentiment": predict_sentiment(t)})
+                    rows.append({
+                        "Aspect": a,
+                        "Sentiment": predict_sentiment(t)
+                    })
         return pd.DataFrame(rows)
 
     # ===============================
@@ -126,7 +152,7 @@ with main_col:
         return comments
 
     # ===============================
-    # CHARTS (CENTERED & SMALL)
+    # CHARTS (COMPACT & CENTERED)
     # ===============================
     def show_sentiment_charts(sentiments):
         s = pd.Series(sentiments).value_counts()
@@ -169,7 +195,7 @@ with main_col:
     )
 
     # ===============================
-    # PRODUCT / TOPIC
+    # PRODUCT / TOPIC ANALYSIS
     # ===============================
     if mode == "Product / Topic Analysis (YouTube)":
         topic = st.text_input("Enter product / topic")
@@ -226,7 +252,7 @@ with main_col:
                         st.write(f"{i}. {c}")
 
     # ===============================
-    # CSV UPLOAD
+    # CSV UPLOAD ANALYSIS
     # ===============================
     else:
         file = st.file_uploader("Upload CSV (text column required)", type="csv")
