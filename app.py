@@ -14,7 +14,7 @@ st.set_page_config(
 )
 
 # ===============================
-# CUSTOM CSS (FONT + EMOJI SIDES)
+# CUSTOM CSS (CENTER + SCATTER EMOJIS)
 # ===============================
 st.markdown("""
 <style>
@@ -26,55 +26,82 @@ html, body, [class*="css"] {
     padding-top: 2rem;
 }
 
-.emoji-column {
-    font-size: 28px;
-    line-height: 2.2;
-    opacity: 0.35;
-    text-align: center;
+/* Emoji scatter area */
+.emoji-scatter {
+    position: relative;
+    height: 90vh;
+    opacity: 0.25;
+    filter: blur(0.3px);
+}
+
+/* Emoji style – 2× BIGGER */
+.emoji {
+    position: absolute;
+    font-size: 64px;
+    transform: rotate(var(--rotate));
 }
 </style>
 """, unsafe_allow_html=True)
 
 # ===============================
-# CENTER LAYOUT WITH EMOJI SIDES
+# LAYOUT
 # ===============================
 left_space, main_col, right_space = st.columns([1, 4, 1])
 
+# ===============================
+# LEFT EMOJI SCATTER
+# ===============================
 with left_space:
-    st.markdown(
-        "<div class='emoji-column'>😊<br>😐<br>😡<br>🤔<br>😍<br>😢</div>",
-        unsafe_allow_html=True
-    )
+    st.markdown("""
+    <div class="emoji-scatter">
+        <span class="emoji" style="top:5%; left:20%; --rotate:-15deg;">😊</span>
+        <span class="emoji" style="top:18%; left:60%; --rotate:10deg;">😐</span>
+        <span class="emoji" style="top:35%; left:30%; --rotate:-5deg;">😍</span>
+        <span class="emoji" style="top:55%; left:70%; --rotate:12deg;">🤔</span>
+        <span class="emoji" style="top:72%; left:25%; --rotate:-8deg;">😢</span>
+        <span class="emoji" style="top:88%; left:60%; --rotate:6deg;">😡</span>
+    </div>
+    """, unsafe_allow_html=True)
 
+# ===============================
+# RIGHT EMOJI SCATTER
+# ===============================
 with right_space:
-    st.markdown(
-        "<div class='emoji-column'>😍<br>😮<br>😐<br>😊<br>😡<br>🤔</div>",
-        unsafe_allow_html=True
-    )
+    st.markdown("""
+    <div class="emoji-scatter">
+        <span class="emoji" style="top:8%; left:40%; --rotate:12deg;">😮</span>
+        <span class="emoji" style="top:22%; left:15%; --rotate:-10deg;">😍</span>
+        <span class="emoji" style="top:40%; left:55%; --rotate:8deg;">😊</span>
+        <span class="emoji" style="top:60%; left:20%; --rotate:-6deg;">😐</span>
+        <span class="emoji" style="top:78%; left:65%; --rotate:10deg;">🤔</span>
+        <span class="emoji" style="top:90%; left:30%; --rotate:-12deg;">😡</span>
+    </div>
+    """, unsafe_allow_html=True)
 
+# ===============================
+# MAIN CONTENT
+# ===============================
 with main_col:
-    # ===============================
-    # HEADER
-    # ===============================
+
     st.title("📊 Sentiment Analysis Studio")
     st.caption("Real-Time Media Opinion Analysis Using Machine Learning")
 
-    PRO_COLORS = ["#4E79A7", "#F28E2B", "#E15759"]
+    COLORS = ["#4E79A7", "#F28E2B", "#E15759"]
 
     # ===============================
     # LOAD MODELS
     # ===============================
     @st.cache_resource
     def load_models():
-        sentiment_en = pipeline(
+        en = pipeline(
             "sentiment-analysis",
             model="distilbert-base-uncased-finetuned-sst-2-english"
         )
-        sentiment_multi = pipeline(
+        multi = pipeline(
             "sentiment-analysis",
             model="cardiffnlp/twitter-xlm-roberta-base-sentiment"
         )
-        return sentiment_en, sentiment_multi
+        return en, multi
 
     sentiment_en, sentiment_multi = load_models()
 
@@ -118,14 +145,11 @@ with main_col:
             tl = t.lower()
             for a, keys in ASPECTS.items():
                 if any(k in tl for k in keys):
-                    rows.append({
-                        "Aspect": a,
-                        "Sentiment": predict_sentiment(t)
-                    })
+                    rows.append({"Aspect": a, "Sentiment": predict_sentiment(t)})
         return pd.DataFrame(rows)
 
     # ===============================
-    # YOUTUBE FUNCTIONS
+    # YOUTUBE DATA
     # ===============================
     def search_videos(query, limit=3):
         res = youtube.search().list(
@@ -152,38 +176,36 @@ with main_col:
         return comments
 
     # ===============================
-    # CHARTS (COMPACT & CENTERED)
+    # CHARTS
     # ===============================
-    def show_sentiment_charts(sentiments):
+    def show_charts(sentiments):
         s = pd.Series(sentiments).value_counts()
         c1, c2 = st.columns(2)
 
         with c1:
-            fig, ax = plt.subplots(figsize=(3.8, 3.8), facecolor="none")
+            fig, ax = plt.subplots(figsize=(3.6, 3.6), facecolor="none")
             ax.set_facecolor("none")
             ax.pie(
                 s,
                 labels=s.index,
                 autopct="%1.1f%%",
                 startangle=90,
-                colors=PRO_COLORS,
+                colors=COLORS,
                 wedgeprops={"width": 0.45}
             )
             ax.axis("equal")
             ax.set_title("Sentiment Distribution")
-            st.pyplot(fig, use_container_width=False)
+            st.pyplot(fig)
 
         with c2:
-            fig, ax = plt.subplots(figsize=(3.8, 3))
+            fig, ax = plt.subplots(figsize=(3.6, 3))
             ax.set_facecolor("none")
-            s.plot(kind="barh", color=PRO_COLORS, ax=ax)
-            ax.set_xlabel("Comments")
-            ax.set_ylabel("")
+            s.plot(kind="barh", color=COLORS, ax=ax)
             ax.set_title("Sentiment Comparison")
-            st.pyplot(fig, use_container_width=False)
+            st.pyplot(fig)
 
     # ===============================
-    # UI MODE
+    # MODE SELECTION
     # ===============================
     mode = st.selectbox(
         "Choose Analysis Type",
@@ -195,14 +217,14 @@ with main_col:
     )
 
     # ===============================
-    # PRODUCT / TOPIC ANALYSIS
+    # PRODUCT / TOPIC
     # ===============================
     if mode == "Product / Topic Analysis (YouTube)":
         topic = st.text_input("Enter product / topic")
 
         if st.button("Analyze"):
             st.info(f"🔍 Analyzing public opinion on: {topic}")
-            st.caption("Almost there… processing real audience opinions")
+            st.caption("Almost there… gathering audience voices")
 
             comments = []
             for v in search_videos(topic):
@@ -214,7 +236,7 @@ with main_col:
                     st.write(f"{i}. {c}")
 
                 sentiments = [predict_sentiment(c) for c in comments]
-                show_sentiment_charts(sentiments)
+                show_charts(sentiments)
 
                 st.subheader("🧠 Aspect-Based Sentiment")
                 absa = aspect_based_sentiment(comments)
@@ -245,14 +267,14 @@ with main_col:
                 comments = fetch_channel_comments(cid)
                 if comments:
                     sentiments = [predict_sentiment(c) for c in comments]
-                    show_sentiment_charts(sentiments)
+                    show_charts(sentiments)
 
                     st.subheader("📄 Sample Audience Comments")
                     for i, c in enumerate(comments[:5], 1):
                         st.write(f"{i}. {c}")
 
     # ===============================
-    # CSV UPLOAD ANALYSIS
+    # CSV ANALYSIS
     # ===============================
     else:
         file = st.file_uploader("Upload CSV (text column required)", type="csv")
@@ -260,6 +282,6 @@ with main_col:
             df = pd.read_csv(file)
             if "text" in df.columns:
                 sentiments = df["text"].apply(predict_sentiment)
-                show_sentiment_charts(sentiments)
+                show_charts(sentiments)
             else:
                 st.error("CSV must contain a 'text' column")
