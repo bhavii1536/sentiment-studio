@@ -70,7 +70,11 @@ with main:
     st.title("📊 Sentiment Analysis Studio")
     st.caption("Real-Time Media Opinion Analysis Using Machine Learning")
 
-    PRO_COLORS = ["#2563EB", "#F97316", "#CBD5E1"]
+    # Main sentiment colors (Blue & Orange)
+    PRO_COLORS = ["#2563EB", "#F97316"]
+
+    # Aspect sentiment colors (Green & Red)
+    ASPECT_COLORS = ["#22C55E", "#EF4444"]
 
     # ===============================
     # LOAD MODELS
@@ -111,8 +115,6 @@ with main:
         label = model(text[:512])[0]["label"]
         if label in ["LABEL_0", "NEGATIVE"]:
             return "Negative"
-        elif label in ["LABEL_1", "NEUTRAL"]:
-            return "Neutral"
         return "Positive"
 
     ASPECTS = {
@@ -157,8 +159,7 @@ with main:
             maxResults=video_limit
         ).execute()
 
-        comments = []
-        video_ids = []
+        comments, video_ids = [], []
 
         for v in videos_res["items"]:
             vid = v["id"]["videoId"]
@@ -170,9 +171,7 @@ with main:
             id=",".join(video_ids)
         ).execute()
 
-        total_views = 0
-        total_likes = 0
-        monthly_views = {}
+        total_views, total_likes, monthly_views = 0, 0, {}
 
         for item in stats_res["items"]:
             views = int(item["statistics"].get("viewCount", 0))
@@ -192,13 +191,13 @@ with main:
         }
 
     # ===============================
-    # CHARTS (NEUTRAL FIX APPLIED)
+    # PIE CHARTS (NO DONUT, NO NEUTRAL)
     # ===============================
     def show_sentiment_charts(sentiments):
         s = (
             pd.Series(sentiments)
             .value_counts()
-            .reindex(["Negative", "Neutral", "Positive"], fill_value=0)
+            .reindex(["Negative", "Positive"], fill_value=0)
         )
 
         c1, c2 = st.columns(2)
@@ -211,7 +210,6 @@ with main:
                 autopct="%1.1f%%",
                 startangle=90,
                 colors=PRO_COLORS,
-                wedgeprops={"width": 0.45, "edgecolor": "#020617"},
                 textprops={"color": "white", "fontsize": 11}
             )
             ax.axis("equal")
@@ -262,7 +260,26 @@ with main:
                 absa = aspect_based_sentiment(comments)
                 if not absa.empty:
                     st.subheader("🧠 Aspect-Based Sentiment")
-                    st.bar_chart(absa.value_counts().unstack().fillna(0))
+
+                    for aspect in absa["Aspect"].unique():
+                        data = (
+                            absa[absa["Aspect"] == aspect]["Sentiment"]
+                            .value_counts()
+                            .reindex(["Positive", "Negative"], fill_value=0)
+                        )
+
+                        fig, ax = plt.subplots(figsize=(3.2, 3.2), facecolor="none")
+                        ax.pie(
+                            data,
+                            labels=data.index,
+                            autopct="%1.1f%%",
+                            startangle=90,
+                            colors=ASPECT_COLORS,
+                            textprops={"color": "white", "fontsize": 10}
+                        )
+                        ax.axis("equal")
+                        ax.set_title(f"{aspect} Sentiment")
+                        st.pyplot(fig, use_container_width=False)
 
     # ===============================
     # CHANNEL INSIGHTS
