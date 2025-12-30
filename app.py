@@ -70,11 +70,9 @@ with main:
     st.title("📊 Sentiment Analysis Studio")
     st.caption("Real-Time Media Opinion Analysis Using Machine Learning")
 
-    # Main sentiment colors (Blue & Orange)
-    PRO_COLORS = ["#2563EB", "#F97316"]
-
-    # Aspect sentiment colors (Green & Red)
-    ASPECT_COLORS = ["#22C55E", "#EF4444"]
+    # Colors
+    PRO_COLORS = ["#2563EB", "#F97316"]   # Main sentiment
+    ASPECT_COLORS = ["#22C55E", "#EF4444"]  # Aspect sentiment
 
     # ===============================
     # LOAD MODELS
@@ -191,7 +189,7 @@ with main:
         }
 
     # ===============================
-    # PIE CHARTS (NO DONUT, NO NEUTRAL)
+    # MAIN SENTIMENT PIE
     # ===============================
     def show_sentiment_charts(sentiments):
         s = (
@@ -257,29 +255,19 @@ with main:
                 sentiments = [predict_sentiment(c) for c in comments]
                 show_sentiment_charts(sentiments)
 
+                # ✅ ASPECT-BASED BAR CHART
                 absa = aspect_based_sentiment(comments)
                 if not absa.empty:
-                    st.subheader("🧠 Aspect-Based Sentiment")
+                    st.subheader("🧠 Aspect-Based Sentiment Analysis")
 
-                    for aspect in absa["Aspect"].unique():
-                        data = (
-                            absa[absa["Aspect"] == aspect]["Sentiment"]
-                            .value_counts()
-                            .reindex(["Positive", "Negative"], fill_value=0)
-                        )
+                    aspect_df = (
+                        absa.groupby(["Aspect", "Sentiment"])
+                        .size()
+                        .unstack()
+                        .reindex(columns=["Positive", "Negative"], fill_value=0)
+                    )
 
-                        fig, ax = plt.subplots(figsize=(3.2, 3.2), facecolor="none")
-                        ax.pie(
-                            data,
-                            labels=data.index,
-                            autopct="%1.1f%%",
-                            startangle=90,
-                            colors=ASPECT_COLORS,
-                            textprops={"color": "white", "fontsize": 10}
-                        )
-                        ax.axis("equal")
-                        ax.set_title(f"{aspect} Sentiment")
-                        st.pyplot(fig, use_container_width=False)
+                    st.bar_chart(aspect_df)
 
     # ===============================
     # CHANNEL INSIGHTS
