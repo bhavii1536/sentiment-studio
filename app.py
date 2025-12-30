@@ -14,21 +14,19 @@ st.set_page_config(
 )
 
 # ===============================
-# BACKGROUND EMOJI ATMOSPHERE + UI POLISH
+# BACKGROUND + UI STYLING
 # ===============================
 st.markdown("""
 <style>
-html, body, [class*="css"] {
+html, body {
+    background: linear-gradient(135deg, #020617, #0f172a);
     font-size: 14px;
-    background: linear-gradient(135deg, #0f172a, #020617);
 }
 
-/* Main padding */
 .block-container {
     padding-top: 2rem;
 }
 
-/* Emoji background */
 .emoji-bg {
     position: fixed;
     inset: 0;
@@ -36,7 +34,6 @@ html, body, [class*="css"] {
     pointer-events: none;
 }
 
-/* Floating animation */
 @keyframes float {
     0% { transform: translateY(0px); }
     50% { transform: translateY(-18px); }
@@ -45,57 +42,50 @@ html, body, [class*="css"] {
 
 .emoji {
     position: absolute;
-    opacity: 0.22;
-    animation: float 16s ease-in-out infinite;
+    opacity: 0.25;
+    animation: float 18s ease-in-out infinite;
 }
 
-/* Size variation (2x bigger) */
-.small  { font-size: 64px; filter: blur(1px); }
+.small { font-size: 64px; filter: blur(1px); }
 .medium { font-size: 96px; filter: blur(0.6px); }
-.large  { font-size: 128px; filter: blur(0.3px); }
-
-/* Section titles */
-h1, h2, h3 {
-    color: #e5e7eb;
-}
+.large { font-size: 128px; filter: blur(0.3px); }
 </style>
 
 <div class="emoji-bg">
-    <span class="emoji large"  style="top:6%; left:6%;">😊</span>
-    <span class="emoji medium" style="top:12%; left:78%;">😍</span>
-    <span class="emoji small"  style="top:32%; left:12%;">😐</span>
-    <span class="emoji large"  style="top:48%; left:86%;">😮</span>
-    <span class="emoji medium" style="top:65%; left:6%;">😡</span>
-    <span class="emoji small"  style="top:82%; left:74%;">🤔</span>
-    <span class="emoji large"  style="top:88%; left:40%;">😄</span>
+    <span class="emoji large"  style="top:8%; left:6%;">😊</span>
+    <span class="emoji medium" style="top:18%; left:80%;">😍</span>
+    <span class="emoji small"  style="top:38%; left:10%;">😐</span>
+    <span class="emoji large"  style="top:52%; left:88%;">😮</span>
+    <span class="emoji medium" style="top:68%; left:6%;">😡</span>
+    <span class="emoji small"  style="top:84%; left:72%;">🤔</span>
 </div>
 """, unsafe_allow_html=True)
 
 # ===============================
-# CENTER LAYOUT (UNCHANGED)
+# CENTER LAYOUT
 # ===============================
-left_space, main_col, right_space = st.columns([1, 4, 1])
+_, main, _ = st.columns([1, 4, 1])
 
-with main_col:
+with main:
     st.title("📊 Sentiment Analysis Studio")
     st.caption("Real-Time Media Opinion Analysis Using Machine Learning")
 
-    PRO_COLORS = ["#93c5fd", "#fcd34d", "#fca5a5"]
+    PRO_COLORS = ["#2563EB", "#F97316", "#CBD5E1"]
 
     # ===============================
     # LOAD MODELS
     # ===============================
     @st.cache_resource
     def load_models():
-        sentiment_en = pipeline(
+        en = pipeline(
             "sentiment-analysis",
             model="distilbert-base-uncased-finetuned-sst-2-english"
         )
-        sentiment_multi = pipeline(
+        multi = pipeline(
             "sentiment-analysis",
             model="cardiffnlp/twitter-xlm-roberta-base-sentiment"
         )
-        return sentiment_en, sentiment_multi
+        return en, multi
 
     sentiment_en, sentiment_multi = load_models()
 
@@ -103,8 +93,7 @@ with main_col:
     # YOUTUBE API
     # ===============================
     youtube = build(
-        "youtube",
-        "v3",
+        "youtube", "v3",
         developerKey=st.secrets["YOUTUBE_API_KEY"]
     )
 
@@ -143,15 +132,15 @@ with main_col:
         return pd.DataFrame(rows)
 
     # ===============================
-    # YOUTUBE FUNCTIONS
+    # YOUTUBE DATA
     # ===============================
-    def search_videos(query, limit=3):
+    def search_videos(query, limit=5):
         res = youtube.search().list(
             q=query, part="id", type="video", maxResults=limit
         ).execute()
         return [i["id"]["videoId"] for i in res["items"]]
 
-    def fetch_comments(video_id, limit=80):
+    def fetch_comments(video_id, limit=120):
         res = youtube.commentThreads().list(
             part="snippet", videoId=video_id, maxResults=100
         ).execute()
@@ -160,32 +149,70 @@ with main_col:
             for i in res["items"][:limit]
         ]
 
-    def fetch_channel_comments(channel_id):
-        videos = youtube.search().list(
-            channelId=channel_id, part="id", type="video", maxResults=3
+    def fetch_channel_data(channel_id, video_limit=5, comment_limit=120):
+        videos_res = youtube.search().list(
+            channelId=channel_id,
+            part="id",
+            type="video",
+            maxResults=video_limit
         ).execute()
+
         comments = []
-        for v in videos["items"]:
-            comments.extend(fetch_comments(v["id"]["videoId"]))
-        return comments
+        video_ids = []
+
+        for v in videos_res["items"]:
+            vid = v["id"]["videoId"]
+            video_ids.append(vid)
+            comments.extend(fetch_comments(vid, comment_limit))
+
+        stats_res = youtube.videos().list(
+            part="statistics,snippet",
+            id=",".join(video_ids)
+        ).execute()
+
+        total_views = 0
+        total_likes = 0
+        monthly_views = {}
+
+        for item in stats_res["items"]:
+            views = int(item["statistics"].get("viewCount", 0))
+            likes = int(item["statistics"].get("likeCount", 0))
+            month = item["snippet"]["publishedAt"][:7]
+
+            total_views += views
+            total_likes += likes
+            monthly_views[month] = monthly_views.get(month, 0) + views
+
+        return {
+            "comments": comments,
+            "video_count": len(video_ids),
+            "total_views": total_views,
+            "total_likes": total_likes,
+            "monthly_views": monthly_views
+        }
 
     # ===============================
-    # CHARTS (UNCHANGED)
+    # CHARTS (NEUTRAL FIX APPLIED)
     # ===============================
     def show_sentiment_charts(sentiments):
-        s = pd.Series(sentiments).value_counts()
+        s = (
+            pd.Series(sentiments)
+            .value_counts()
+            .reindex(["Negative", "Neutral", "Positive"], fill_value=0)
+        )
+
         c1, c2 = st.columns(2)
 
         with c1:
             fig, ax = plt.subplots(figsize=(3.6, 3.6), facecolor="none")
-            ax.set_facecolor("none")
             ax.pie(
                 s,
                 labels=s.index,
                 autopct="%1.1f%%",
                 startangle=90,
                 colors=PRO_COLORS,
-                wedgeprops={"width": 0.45}
+                wedgeprops={"width": 0.45, "edgecolor": "#020617"},
+                textprops={"color": "white", "fontsize": 11}
             )
             ax.axis("equal")
             ax.set_title("Sentiment Distribution")
@@ -193,7 +220,6 @@ with main_col:
 
         with c2:
             fig, ax = plt.subplots(figsize=(3.6, 3))
-            ax.set_facecolor("none")
             s.plot(kind="barh", color=PRO_COLORS, ax=ax)
             ax.set_xlabel("Comments")
             ax.set_ylabel("")
@@ -220,7 +246,6 @@ with main_col:
 
         if st.button("Analyze"):
             st.info(f"🔍 Analyzing public opinion on: {topic}")
-            st.caption("Almost there… processing real audience opinions")
 
             comments = []
             for v in search_videos(topic):
@@ -234,9 +259,9 @@ with main_col:
                 sentiments = [predict_sentiment(c) for c in comments]
                 show_sentiment_charts(sentiments)
 
-                st.subheader("🧠 Aspect-Based Sentiment")
                 absa = aspect_based_sentiment(comments)
                 if not absa.empty:
+                    st.subheader("🧠 Aspect-Based Sentiment")
                     st.bar_chart(absa.value_counts().unstack().fillna(0))
 
     # ===============================
@@ -252,22 +277,28 @@ with main_col:
 
             if res["items"]:
                 cid = res["items"][0]["snippet"]["channelId"]
-                stats = youtube.channels().list(
-                    part="statistics", id=cid
-                ).execute()["items"][0]["statistics"]
+                data = fetch_channel_data(cid)
 
-                m1, m2 = st.columns(2)
-                m1.metric("Subscribers", stats["subscriberCount"])
-                m2.metric("Total Views", stats["viewCount"])
+                st.subheader("📊 Channel Overview")
+                m1, m2, m3 = st.columns(3)
+                m1.metric("Videos Analyzed", data["video_count"])
+                m2.metric("Total Views", f'{data["total_views"]:,}')
+                m3.metric("Total Likes", f'{data["total_likes"]:,}')
 
-                comments = fetch_channel_comments(cid)
-                if comments:
-                    sentiments = [predict_sentiment(c) for c in comments]
-                    show_sentiment_charts(sentiments)
+                if data["monthly_views"]:
+                    st.subheader("📈 Monthly Views Trend")
+                    mv_df = pd.DataFrame(
+                        sorted(data["monthly_views"].items()),
+                        columns=["Month", "Views"]
+                    )
+                    st.bar_chart(mv_df.set_index("Month"))
 
-                    st.subheader("📄 Sample Audience Comments")
-                    for i, c in enumerate(comments[:5], 1):
-                        st.write(f"{i}. {c}")
+                sentiments = [predict_sentiment(c) for c in data["comments"]]
+                show_sentiment_charts(sentiments)
+
+                st.subheader("📄 Sample Audience Comments")
+                for i, c in enumerate(data["comments"][:5], 1):
+                    st.write(f"{i}. {c}")
 
     # ===============================
     # CSV UPLOAD
