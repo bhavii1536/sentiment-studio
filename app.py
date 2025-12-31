@@ -14,7 +14,7 @@ st.set_page_config(
 )
 
 # ===============================
-# CSS (DARK, CLEAN)
+# CSS
 # ===============================
 st.markdown("""
 <style>
@@ -36,10 +36,10 @@ with main_col:
     st.title("📊 Sentiment Analysis Studio")
     st.caption("Real-Time Media Opinion Analysis Using Machine Learning")
 
-    PIE_COLORS = ["#2563EB", "#F97316"]  # blue, orange
+    PIE_COLORS = ["#2563EB", "#F97316"]  # Blue & Orange
 
     # ===============================
-    # LOAD MODEL (FAST + MULTILINGUAL)
+    # LOAD MODEL (FAST, CPU SAFE)
     # ===============================
     @st.cache_resource
     def load_model():
@@ -71,7 +71,7 @@ with main_col:
             return "Positive"
 
     # ===============================
-    # ASPECT-BASED SENTIMENT
+    # ASPECT-BASED (ONLY PRODUCT)
     # ===============================
     ASPECTS = {
         "Price": ["price", "cost", "expensive", "cheap"],
@@ -149,29 +149,6 @@ with main_col:
         chart = absa_df.value_counts().unstack().fillna(0)
         st.bar_chart(chart)
 
-    def aspect_pies(absa_df):
-        aspects = absa_df["Aspect"].unique()
-        cols = st.columns(len(aspects))
-
-        for col, asp in zip(cols, aspects):
-            with col:
-                data = (
-                    absa_df[absa_df["Aspect"] == asp]["Sentiment"]
-                    .value_counts()
-                    .reindex(["Positive", "Negative"], fill_value=0)
-                )
-                fig, ax = plt.subplots(figsize=(3, 3))
-                ax.pie(
-                    data,
-                    labels=data.index,
-                    autopct="%1.1f%%",
-                    colors=["#22C55E", "#EF4444"],
-                    startangle=90
-                )
-                ax.axis("equal")
-                ax.set_title(asp)
-                st.pyplot(fig)
-
     # ===============================
     # UI MODE
     # ===============================
@@ -211,7 +188,7 @@ with main_col:
                 aspect_bar(absa)
 
     # ===============================
-    # CHANNEL INSIGHTS
+    # CHANNEL INSIGHTS (NO ASPECTS)
     # ===============================
     elif mode == "YouTube Channel Insights":
         channel = st.text_input("Enter Channel Name")
@@ -236,12 +213,12 @@ with main_col:
                 total_views = 0
                 total_likes = 0
                 monthly = {}
-
                 comments = []
 
                 for v in stats:
                     s = v["statistics"]
                     snip = v["snippet"]
+
                     total_views += int(s.get("viewCount", 0))
                     total_likes += int(s.get("likeCount", 0))
 
@@ -258,13 +235,12 @@ with main_col:
                 m3.metric("Total Views", f"{total_views:,}")
                 m4.metric("Total Likes", f"{total_likes:,}")
 
-                # LAST 6 MONTHS ORDERED
+                # LAST 6 MONTHS (FROM TODAY)
                 now = datetime.now()
                 months = [
                     (now.replace(day=1) - pd.DateOffset(months=i)).strftime("%Y-%m")
                     for i in range(5, -1, -1)
                 ]
-
                 views = [monthly.get(m, 0) for m in months]
 
                 st.subheader("📈 Monthly Views (Last 6 Months)")
@@ -275,11 +251,6 @@ with main_col:
 
                 sentiments = [predict_sentiment(c) for c in comments]
                 sentiment_pie_bar(sentiments)
-
-                absa = aspect_based_sentiment(comments)
-                if not absa.empty:
-                    st.subheader("🧠 Aspect-Based Sentiment")
-                    aspect_pies(absa)
 
     # ===============================
     # CSV UPLOAD
