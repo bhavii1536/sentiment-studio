@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
-from datetime import datetime
 from transformers import pipeline
 from googleapiclient.discovery import build
 
@@ -14,7 +13,7 @@ st.set_page_config(
 )
 
 # ===============================
-# CSS
+# BASIC CSS
 # ===============================
 st.markdown("""
 <style>
@@ -71,7 +70,7 @@ with main_col:
             return "Positive"
 
     # ===============================
-    # ASPECT-BASED (ONLY PRODUCT)
+    # ASPECT-BASED (PRODUCT ONLY)
     # ===============================
     ASPECTS = {
         "Price": ["price", "cost", "expensive", "cheap"],
@@ -188,7 +187,7 @@ with main_col:
                 aspect_bar(absa)
 
     # ===============================
-    # CHANNEL INSIGHTS (NO ASPECTS)
+    # CHANNEL INSIGHTS (CLEAN)
     # ===============================
     elif mode == "YouTube Channel Insights":
         channel = st.text_input("Enter Channel Name")
@@ -212,18 +211,24 @@ with main_col:
 
                 total_views = 0
                 total_likes = 0
-                monthly = {}
                 comments = []
+
+                video_titles = []
+                video_views = []
 
                 for v in stats:
                     s = v["statistics"]
                     snip = v["snippet"]
 
-                    total_views += int(s.get("viewCount", 0))
-                    total_likes += int(s.get("likeCount", 0))
+                    views = int(s.get("viewCount", 0))
+                    likes = int(s.get("likeCount", 0))
 
-                    date = snip["publishedAt"][:7]
-                    monthly[date] = monthly.get(date, 0) + int(s.get("viewCount", 0))
+                    total_views += views
+                    total_likes += likes
+
+                    title = snip["title"][:30] + "..."
+                    video_titles.append(title)
+                    video_views.append(views)
 
                     comments.extend(fetch_comments(v["id"]))
 
@@ -235,18 +240,12 @@ with main_col:
                 m3.metric("Total Views", f"{total_views:,}")
                 m4.metric("Total Likes", f"{total_likes:,}")
 
-                # LAST 6 MONTHS (FROM TODAY)
-                now = datetime.now()
-                months = [
-                    (now.replace(day=1) - pd.DateOffset(months=i)).strftime("%Y-%m")
-                    for i in range(5, -1, -1)
-                ]
-                views = [monthly.get(m, 0) for m in months]
-
-                st.subheader("📈 Monthly Views (Last 6 Months)")
-                fig, ax = plt.subplots(figsize=(6, 3))
-                ax.bar(months, views, color="#93C5FD")
-                ax.set_ylabel("Views")
+                # RECENT VIDEO PERFORMANCE
+                st.subheader("📊 Recent Video Performance (Views)")
+                fig, ax = plt.subplots(figsize=(7, 4))
+                ax.barh(video_titles, video_views, color="#60A5FA")
+                ax.set_xlabel("Views")
+                ax.invert_yaxis()
                 st.pyplot(fig)
 
                 sentiments = [predict_sentiment(c) for c in comments]
