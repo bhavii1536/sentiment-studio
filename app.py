@@ -72,11 +72,8 @@ with main_col:
     st.title("📊 Sentiment Analysis Studio")
     st.caption("Real-Time Media Opinion Analysis Using Machine Learning")
 
-    # ===============================
-    # COLORS
-    # ===============================
-    PIE_COLORS = ["#2563EB", "#F97316"]     # Blue / Orange
-    ASPECT_COLORS = ["#22C55E", "#EF4444"] # Green / Red
+    PIE_COLORS = ["#2563EB", "#F97316"]
+    ASPECT_COLORS = ["#22C55E", "#EF4444"]
 
     # ===============================
     # LOAD MODELS
@@ -128,16 +125,13 @@ with main_col:
         rows = []
         for t in texts:
             tl = t.lower()
-            for aspect, keys in ASPECTS.items():
+            for a, keys in ASPECTS.items():
                 if any(k in tl for k in keys):
-                    rows.append({
-                        "Aspect": aspect,
-                        "Sentiment": predict_sentiment(t)
-                    })
+                    rows.append({"Aspect": a, "Sentiment": predict_sentiment(t)})
         return pd.DataFrame(rows)
 
     # ===============================
-    # YOUTUBE DATA FETCHING
+    # YOUTUBE DATA
     # ===============================
     def search_videos(query, limit=8):
         res = youtube.search().list(
@@ -156,10 +150,7 @@ with main_col:
 
     def fetch_channel_data(channel_id, video_limit=8, comment_limit=150):
         search_res = youtube.search().list(
-            channelId=channel_id,
-            part="id",
-            type="video",
-            maxResults=video_limit
+            channelId=channel_id, part="id", type="video", maxResults=video_limit
         ).execute()
 
         comments, video_ids = [], []
@@ -170,8 +161,7 @@ with main_col:
             comments.extend(fetch_comments(vid, comment_limit))
 
         stats_res = youtube.videos().list(
-            part="statistics,snippet",
-            id=",".join(video_ids)
+            part="statistics,snippet", id=",".join(video_ids)
         ).execute()
 
         total_views, total_likes, monthly_views = 0, 0, {}
@@ -197,26 +187,53 @@ with main_col:
     def last_n_months_views(monthly_views, n=6):
         today = datetime.today()
         months = [(today - relativedelta(months=i)).strftime("%Y-%m") for i in range(n-1, -1, -1)]
-
         return pd.DataFrame({
             "Month": [datetime.strptime(m, "%Y-%m").strftime("%b %Y") for m in months],
             "Views": [monthly_views.get(m, 0) for m in months]
         })
 
     # ===============================
-    # SENTIMENT PIE CHART
+    # PIE + BAR (PRODUCT ANALYSIS)
+    # ===============================
+    def show_sentiment_pie_and_bar(sentiments):
+        s = pd.Series(sentiments).value_counts().reindex(["Negative", "Positive"], fill_value=0)
+        c1, c2 = st.columns(2)
+
+        with c1:
+            fig, ax = plt.subplots(figsize=(3, 3))
+            ax.pie(
+                s,
+                labels=s.index,
+                autopct="%1.1f%%",
+                startangle=90,
+                colors=PIE_COLORS,
+                textprops={"color": "white", "fontsize": 10}
+            )
+            ax.axis("equal")
+            ax.set_title("Sentiment Distribution")
+            st.pyplot(fig)
+
+        with c2:
+            fig, ax = plt.subplots(figsize=(4, 3))
+            s.plot(kind="barh", color=PIE_COLORS, ax=ax)
+            ax.set_xlabel("Comments")
+            ax.set_ylabel("")
+            ax.set_title("Sentiment Comparison")
+            st.pyplot(fig)
+
+    # ===============================
+    # PIE ONLY (CHANNEL / CSV)
     # ===============================
     def show_sentiment_pie(sentiments):
         s = pd.Series(sentiments).value_counts().reindex(["Negative", "Positive"], fill_value=0)
-
-        fig, ax = plt.subplots(figsize=(4, 4), facecolor="none")
+        fig, ax = plt.subplots(figsize=(4, 4))
         ax.pie(
             s,
             labels=s.index,
             autopct="%1.1f%%",
             startangle=90,
             colors=PIE_COLORS,
-            textprops={"color": "white", "fontsize": 11}
+            textprops={"color": "white"}
         )
         ax.axis("equal")
         ax.set_title("Sentiment Distribution")
@@ -244,18 +261,20 @@ with main_col:
             st.info(f"🔍 Analyzing public opinion on: {topic}")
 
             comments = []
-            for vid in search_videos(topic):
-                comments.extend(fetch_comments(vid))
+            vids = search_videos(topic)
+            for v in vids:
+                comments.extend(fetch_comments(v))
 
-            st.write(f"**Videos analyzed:** {len(search_videos(topic))}")
-            st.write(f"**Total comments analyzed:** {len(comments)}")
+            st.write(f"**Videos analyzed:** {len(vids)}")
+            st.write(f"**Comments analyzed:** {len(comments)}")
 
             if comments:
-                show_sentiment_pie([predict_sentiment(c) for c in comments])
+                sentiments = [predict_sentiment(c) for c in comments]
+                show_sentiment_pie_and_bar(sentiments)
 
                 absa = aspect_based_sentiment(comments)
                 if not absa.empty:
-                    st.subheader("🧠 Aspect-Based Sentiment Analysis")
+                    st.subheader("🧠 Aspect-Based Sentiment")
                     aspect_df = (
                         absa.groupby(["Aspect", "Sentiment"])
                         .size()
@@ -289,7 +308,7 @@ with main_col:
                 m3.metric("Total Views", f'{data["total_views"]:,}')
                 m4.metric("Total Likes", f'{data["total_likes"]:,}')
 
-                st.subheader("📈 Monthly Views Trend (Last 6 Months)")
+                st.subheader("📈 Monthly Views (Last 6 Months)")
                 mv_df = last_n_months_views(data["monthly_views"])
                 st.bar_chart(mv_df.set_index("Month"))
 
