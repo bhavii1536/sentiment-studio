@@ -38,7 +38,7 @@ with main_col:
     PIE_COLORS = ["#2563EB", "#F97316"]  # Blue & Orange
 
     # ===============================
-    # LOAD MODEL (FAST, CPU SAFE)
+    # LOAD MODEL (FAST + CPU SAFE)
     # ===============================
     @st.cache_resource
     def load_model():
@@ -63,7 +63,7 @@ with main_col:
     # ===============================
     def predict_sentiment(text):
         try:
-            label = sentiment_model(text[:512])[0]["label"]
+            label = sentiment_model(str(text)[:512])[0]["label"]
             stars = int(label[0])
             return "Negative" if stars <= 2 else "Positive"
         except:
@@ -82,7 +82,7 @@ with main_col:
     def aspect_based_sentiment(texts):
         rows = []
         for t in texts:
-            tl = t.lower()
+            tl = str(t).lower()
             for aspect, keys in ASPECTS.items():
                 if any(k in tl for k in keys):
                     rows.append({
@@ -140,7 +140,7 @@ with main_col:
         with c2:
             fig, ax = plt.subplots(figsize=(4, 3))
             s.plot(kind="bar", color=PIE_COLORS, ax=ax)
-            ax.set_ylabel("Comments")
+            ax.set_ylabel("Count")
             ax.set_title("Sentiment Comparison")
             st.pyplot(fig)
 
@@ -161,7 +161,7 @@ with main_col:
     )
 
     # ===============================
-    # PRODUCT / TOPIC
+    # PRODUCT / TOPIC ANALYSIS
     # ===============================
     if mode == "Product / Topic Analysis (YouTube)":
         topic = st.text_input("Enter product / topic")
@@ -171,6 +171,7 @@ with main_col:
 
             videos = search_videos(topic)
             comments = []
+
             for v in videos:
                 comments.extend(fetch_comments(v))
 
@@ -226,8 +227,7 @@ with main_col:
                     total_views += views
                     total_likes += likes
 
-                    title = snip["title"][:30] + "..."
-                    video_titles.append(title)
+                    video_titles.append(snip["title"][:30] + "...")
                     video_views.append(views)
 
                     comments.extend(fetch_comments(v["id"]))
@@ -240,7 +240,6 @@ with main_col:
                 m3.metric("Total Views", f"{total_views:,}")
                 m4.metric("Total Likes", f"{total_likes:,}")
 
-                # RECENT VIDEO PERFORMANCE
                 st.subheader("📊 Recent Video Performance (Views)")
                 fig, ax = plt.subplots(figsize=(7, 4))
                 ax.barh(video_titles, video_views, color="#60A5FA")
@@ -252,14 +251,38 @@ with main_col:
                 sentiment_pie_bar(sentiments)
 
     # ===============================
-    # CSV UPLOAD
+    # CSV UPLOAD ANALYSIS (FIXED)
     # ===============================
     else:
         file = st.file_uploader("Upload CSV (text column required)", type="csv")
+
         if file:
-            df = pd.read_csv(file)
-            if "text" not in df.columns:
-                st.error("CSV must contain a 'text' column")
+            # SAFE CSV LOAD
+            try:
+                df = pd.read_csv(file, encoding="utf-8")
+            except UnicodeDecodeError:
+                df = pd.read_csv(file, encoding="latin1")
+
+            st.success(f"CSV loaded: {df.shape[0]} rows")
+
+            possible_text_cols = [
+                "text", "tweet", "content", "comment",
+                "review", "sentence", "clean_text"
+            ]
+
+            text_col = None
+            for col in possible_text_cols:
+                if col in df.columns:
+                    text_col = col
+                    break
+
+            if text_col is None:
+                st.error(
+                    "❌ No text column found.\n\n"
+                    "Expected one of: text, tweet, comment, review, content"
+                )
             else:
-                sentiments = df["text"].apply(predict_sentiment)
+                st.success(f"✅ Using column: `{text_col}`")
+
+                sentiments = df[text_col].astype(str).apply(predict_sentiment)
                 sentiment_pie_bar(sentiments)
