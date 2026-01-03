@@ -1,29 +1,21 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
-from langdetect import detect
 from transformers import pipeline
 from googleapiclient.discovery import build
 
 # ===============================
 # PAGE CONFIG
 # ===============================
-st.set_page_config(
-    page_title="Sentiment Analysis Studio",
-    layout="wide"
-)
+st.set_page_config(page_title="Sentiment Analysis Studio", layout="wide")
 
 # ===============================
-# BASIC STYLE
+# STYLE
 # ===============================
 st.markdown("""
 <style>
-html, body, [class*="css"] {
-    font-size: 14px;
-}
-.block-container {
-    padding-top: 2rem;
-}
+html, body, [class*="css"] { font-size: 14px; }
+.block-container { padding-top: 2rem; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -37,105 +29,89 @@ with main_col:
     st.title("📊 Sentiment Analysis Studio")
     st.caption("Real-Time Media Opinion Analysis Using Machine Learning")
 
-    # Colors
-    POS_COLOR = "#ef4444"   # Red
-    NEG_COLOR = "#2563eb"   # Blue
-    COLORS = [POS_COLOR, NEG_COLOR]
+    # COLORS
+    POS = "#f97316"
+    NEG = "#2563eb"
+    COLORS = [POS, NEG]
 
     # ===============================
-    # LOAD MODELS (FAST + CPU SAFE)
+    # LOAD MODEL
     # ===============================
     @st.cache_resource
-    def load_models():
-        en = pipeline(
+    def load_model():
+        return pipeline(
             "sentiment-analysis",
             model="distilbert-base-uncased-finetuned-sst-2-english"
         )
-        multi = pipeline(
-            "sentiment-analysis",
-            model="cardiffnlp/twitter-xlm-roberta-base-sentiment"
-        )
-        return en, multi
 
-    sentiment_en, sentiment_multi = load_models()
+    model = load_model()
 
     # ===============================
     # YOUTUBE API
     # ===============================
-    youtube = build(
-        "youtube",
-        "v3",
-        developerKey=st.secrets["YOUTUBE_API_KEY"]
-    )
+    youtube = build("youtube", "v3", developerKey=st.secrets["YOUTUBE_API_KEY"])
 
     # ===============================
     # HELPERS
     # ===============================
-    def detect_language(text):
-        try:
-            return detect(text)
-        except:
-            return "en"
-
     def predict_sentiment(text):
-        model = sentiment_en if detect_language(text) == "en" else sentiment_multi
-        label = model(text[:512])[0]["label"]
-        return "Positive" if label in ["LABEL_1", "POSITIVE"] else "Negative"
+        try:
+            label = model(text[:512])[0]["label"]
+            return "Positive" if label == "POSITIVE" else "Negative"
+        except:
+            return "Negative"
+
+    def fetch_comments(video_id, limit=40):
+        try:
+            res = youtube.commentThreads().list(
+                part="snippet", videoId=video_id, maxResults=limit
+            ).execute()
+            return [
+                i["snippet"]["topLevelComment"]["snippet"]["textDisplay"]
+                for i in res["items"]
+            ]
+        except:
+            return []
 
     # ===============================
-    # CHARTS
+    # SENTIMENT CHARTS
     # ===============================
-    def show_sentiment_charts(sentiments):
+    def sentiment_charts(sentiments):
         s = pd.Series(sentiments).value_counts()
 
         c1, c2 = st.columns(2)
 
         with c1:
             fig, ax = plt.subplots(figsize=(3.2, 3.2))
-            ax.pie(
-                s,
-                labels=s.index,
-                autopct="%1.1f%%",
-                startangle=90,
-                colors=COLORS
-            )
+            ax.pie(s, labels=s.index, autopct="%1.1f%%", colors=COLORS, startangle=90)
             ax.set_title("Sentiment Distribution")
             st.pyplot(fig)
 
         with c2:
-            fig, ax = plt.subplots(figsize=(3.5, 3))
+            fig, ax = plt.subplots(figsize=(3.6, 3))
             s.plot(kind="bar", color=COLORS, ax=ax)
             ax.set_ylabel("Count")
             ax.set_title("Sentiment Comparison")
             st.pyplot(fig)
 
     # ===============================
-    # MODE TABS
+    # TABS
     # ===============================
-    mode = st.selectbox(
-        "Choose Analysis Type",
-        [
-            "Product / Topic (YouTube)",
-            "Channel Insights (YouTube)",
-            "CSV Upload Analysis"
-        ]
+    tab1, tab2, tab3 = st.tabs(
+        ["📦 Product / Topic (YouTube)", "📺 Channel Insights", "📁 CSV Upload"]
     )
 
-    # =====================================================
-    # CHANNEL INSIGHTS
-    # =====================================================
-    if mode == "Channel Insights (YouTube)":
-
-        channel_name = st.text_input("Enter Channel Name")
+    # ======================================================
+    # CHANNEL INSIGHTS (UPDATED)
+    # ======================================================
+    with tab2:
+        channel = st.text_input("Enter Channel Name")
 
         if st.button("Analyze Channel"):
 
             # ---- Find channel ----
             search = youtube.search().list(
-                q=channel_name,
-                part="snippet",
-                type="channel",
-                maxResults=1
+                q=channel, part="snippet", type="channel", maxResults=1
             ).execute()
 
             if not search["items"]:
@@ -143,100 +119,74 @@ with main_col:
             else:
                 channel_id = search["items"][0]["snippet"]["channelId"]
 
-                # ---- Channel stats ----
+                # ---- Channel details ----
                 channel_data = youtube.channels().list(
-                    part="statistics,snippet",
+                    part="snippet,statistics",
                     id=channel_id
                 ).execute()["items"][0]
 
+                channel_name = channel_data["snippet"]["title"]
                 subscribers = int(channel_data["statistics"].get("subscriberCount", 0))
-                official_name = channel_data["snippet"]["title"]
 
-                st.subheader(f"📺 Channel Name: **{official_name}**")
+                st.subheader(f"📺 Channel Name: **{channel_name}**")
                 st.caption(f"👥 Subscribers: **{subscribers:,}**")
 
                 # ---- Fetch videos ----
-                videos = youtube.search().list(
+                search_videos = youtube.search().list(
                     channelId=channel_id,
                     part="id",
                     type="video",
                     maxResults=25
                 ).execute()["items"]
 
-                video_ids = [v["id"]["videoId"] for v in videos]
+                video_ids = [v["id"]["videoId"] for v in search_videos]
 
-                video_details = youtube.videos().list(
+                video_data = youtube.videos().list(
                     part="snippet,statistics",
                     id=",".join(video_ids)
                 ).execute()["items"]
 
-                total_views = 0
-                total_likes = 0
+                rows = []
                 comments = []
-                video_rows = []
+                total_likes = 0
 
-                for v in video_details:
-                    stats = v["statistics"]
-                    snippet = v["snippet"]
+                for item in video_data:
+                    title = item["snippet"]["title"]
+                    views = int(item["statistics"].get("viewCount", 0))
+                    likes = int(item["statistics"].get("likeCount", 0))
 
-                    views = int(stats.get("viewCount", 0))
-                    likes = int(stats.get("likeCount", 0))
-
-                    total_views += views
                     total_likes += likes
+                    rows.append({"Title": title, "Views": views})
 
-                    video_rows.append({
-                        "Title": snippet["title"],
-                        "Views": views
-                    })
+                    comments.extend(fetch_comments(item["id"], 30))
 
-                    # Fetch limited comments per video
-                    try:
-                        c = youtube.commentThreads().list(
-                            part="snippet",
-                            videoId=v["id"],
-                            maxResults=30
-                        ).execute()
-
-                        comments.extend([
-                            i["snippet"]["topLevelComment"]["snippet"]["textDisplay"]
-                            for i in c["items"]
-                        ])
-                    except:
-                        pass
-
-                # ---- Metrics ----
-                m1, m2, m3, m4 = st.columns(4)
-                m1.metric("Videos", len(video_rows))
-                m2.metric("Comments", len(comments))
-                m3.metric("Total Views", f"{total_views:,}")
-                m4.metric("Total Likes", f"{total_likes:,}")
-
-                # ---- Views per video chart ----
-                df_videos = pd.DataFrame(video_rows).sort_values(
+                df_videos = pd.DataFrame(rows).sort_values(
                     by="Views", ascending=False
                 )
 
+                # ---- METRICS ----
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric("Videos", len(df_videos))
+                m2.metric("Comments", len(comments))
+                m3.metric("Total Views", f"{df_videos['Views'].sum():,}")
+                m4.metric("Total Likes", f"{total_likes:,}")
+
+                # ---- BAR CHART (VIDEO COMPARISON) ----
                 fig, ax = plt.subplots(figsize=(6, 3))
-                ax.bar(range(len(df_videos)), df_videos["Views"], color=POS_COLOR)
+                ax.barh(df_videos["Title"], df_videos["Views"], color=POS)
+                ax.invert_yaxis()
+                ax.set_xlabel("Views")
                 ax.set_title("Views per Video (Recent)")
-                ax.set_ylabel("Views")
-                ax.set_xlabel("Videos (ordered)")
                 st.pyplot(fig)
 
-                # ---- Sentiment ----
+                # ---- SENTIMENT ----
                 sentiments = [predict_sentiment(c) for c in comments]
-                show_sentiment_charts(sentiments)
+                sentiment_charts(sentiments)
 
-                # ---- Video titles list ----
-                st.subheader("🎬 Recent Videos (Top Views)")
+                # ---- VIDEO LIST ----
+                st.subheader("🎬 Video Titles & Views")
                 st.dataframe(
                     df_videos,
                     use_container_width=True,
                     height=300
                 )
-
-    # =====================================================
-    # PRODUCT / TOPIC & CSV
-    # (kept unchanged from your working version)
-    # =====================================================
