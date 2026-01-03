@@ -8,10 +8,7 @@ from googleapiclient.discovery import build
 # ===============================
 # PAGE CONFIG
 # ===============================
-st.set_page_config(
-    page_title="Sentiment Analysis Studio",
-    layout="wide"
-)
+st.set_page_config(page_title="Sentiment Analysis Studio", layout="wide")
 
 # ===============================
 # STYLE
@@ -37,16 +34,13 @@ with main_col:
     st.title("📊 Sentiment Analysis Studio")
     st.caption("Real-Time Media Opinion Analysis Using Machine Learning")
 
-    # ===============================
-    # COLORS
-    # ===============================
-    POS_COLOR = "#2563eb"   # Blue
-    NEG_COLOR = "#f97316"   # Orange
-    NEU_COLOR = "#9ca3af"   # Gray
+    POS_COLOR = "#F97316"   # Orange
+    NEG_COLOR = "#2563EB"   # Blue
+    NEU_COLOR = "#14B8A6"   # Teal
     COLORS = [POS_COLOR, NEG_COLOR, NEU_COLOR]
 
     # ===============================
-    # LOAD MODELS (CPU FRIENDLY)
+    # LOAD MODELS
     # ===============================
     @st.cache_resource
     def load_models():
@@ -56,7 +50,7 @@ with main_col:
         )
         multi = pipeline(
             "sentiment-analysis",
-            model="nlptown/bert-base-multilingual-uncased-sentiment"
+            model="cardiffnlp/twitter-xlm-roberta-base-sentiment"
         )
         return en, multi
 
@@ -65,11 +59,7 @@ with main_col:
     # ===============================
     # YOUTUBE API
     # ===============================
-    youtube = build(
-        "youtube",
-        "v3",
-        developerKey=st.secrets["YOUTUBE_API_KEY"]
-    )
+    youtube = build("youtube", "v3", developerKey=st.secrets["YOUTUBE_API_KEY"])
 
     # ===============================
     # HELPERS
@@ -80,33 +70,23 @@ with main_col:
         except:
             return "en"
 
-    # ✅ FIXED SENTIMENT LOGIC (NO MORE ALWAYS NEGATIVE)
     def predict_sentiment(text):
         model = sentiment_en if detect_language(text) == "en" else sentiment_multi
-        result = model(text[:512])[0]
+        res = model(text[:512])[0]
+        label = res["label"]
+        score = res["score"]
 
-        label = result["label"]
-        score = result.get("score", 1.0)
-
-        # Confidence-based neutral handling
         if score < 0.60:
             return "Neutral"
-
-        if label in ["LABEL_1", "POSITIVE", "4 stars", "5 stars"]:
+        if label in ["LABEL_1", "POSITIVE"]:
             return "Positive"
-        elif label in ["LABEL_0", "NEGATIVE", "1 star", "2 stars"]:
-            return "Negative"
-        else:
-            return "Neutral"
+        return "Negative"
 
-    # ===============================
-    # ASPECTS (PRODUCT ONLY)
-    # ===============================
     ASPECTS = {
         "Price": ["price", "cost", "expensive", "cheap"],
-        "Quality": ["quality", "performance", "good", "bad"],
-        "Battery": ["battery", "backup", "drain"],
-        "Camera": ["camera", "photo", "video"],
+        "Quality": ["quality", "pure", "organic"],
+        "Packaging": ["packaging", "bottle", "box"],
+        "Delivery": ["delivery", "shipping"]
     }
 
     def aspect_based_sentiment(texts):
@@ -115,22 +95,19 @@ with main_col:
             tl = t.lower()
             for a, keys in ASPECTS.items():
                 if any(k in tl for k in keys):
-                    rows.append({
-                        "Aspect": a,
-                        "Sentiment": predict_sentiment(t)
-                    })
+                    rows.append({"Aspect": a, "Sentiment": predict_sentiment(t)})
         return pd.DataFrame(rows)
 
     # ===============================
     # YOUTUBE FUNCTIONS
     # ===============================
-    def search_videos(query, limit=10):
+    def search_videos(query, limit=15):
         res = youtube.search().list(
             q=query, part="id", type="video", maxResults=limit
         ).execute()
         return [i["id"]["videoId"] for i in res["items"]]
 
-    def fetch_comments(video_id, limit=100):
+    def fetch_comments(video_id, limit=120):
         res = youtube.commentThreads().list(
             part="snippet", videoId=video_id, maxResults=100
         ).execute()
@@ -154,7 +131,7 @@ with main_col:
                 labels=s.index,
                 autopct="%1.1f%%",
                 startangle=90,
-                colors=[POS_COLOR, NEG_COLOR, NEU_COLOR][:len(s)]
+                colors=[POS_COLOR, NEG_COLOR, NEU_COLOR]
             )
             ax.set_title("Sentiment Distribution")
             st.pyplot(fig)
@@ -167,28 +144,31 @@ with main_col:
             st.pyplot(fig)
 
     # ===============================
-    # TABS (UI FIXED)
+    # MODE SELECT
     # ===============================
-    tab1, tab2, tab3 = st.tabs([
-        "📦 Product / Topic (YouTube)",
-        "📊 Channel Insights",
-        "📁 CSV Upload"
-    ])
+    mode = st.selectbox(
+        "Choose Analysis Type",
+        [
+            "Product / Topic Analysis (YouTube)",
+            "YouTube Channel Insights",
+            "CSV Upload Analysis"
+        ]
+    )
 
-    # ======================================================
-    # 📦 PRODUCT / TOPIC
-    # ======================================================
-    with tab1:
+    # ===============================
+    # PRODUCT / TOPIC
+    # ===============================
+    if mode == "Product / Topic Analysis (YouTube)":
         topic = st.text_input("Enter product / topic")
 
-        if st.button("Analyze Topic"):
+        if st.button("Analyze"):
             st.info(f"🔍 Analyzing public opinion on: {topic}")
 
             comments = []
-            for vid in search_videos(topic, 10):
-                comments.extend(fetch_comments(vid, 100))
+            for vid in search_videos(topic):
+                comments.extend(fetch_comments(vid))
 
-            st.success(f"Fetched {len(comments)} comments")
+            st.success(f"Analyzed {len(comments)} comments")
 
             sentiments = [predict_sentiment(c) for c in comments]
             show_sentiment_charts(sentiments)
@@ -202,10 +182,10 @@ with main_col:
             if not absa.empty:
                 st.bar_chart(absa.value_counts().unstack().fillna(0))
 
-    # ======================================================
-    # 📊 CHANNEL INSIGHTS
-    # ======================================================
-    with tab2:
+    # ===============================
+    # CHANNEL INSIGHTS
+    # ===============================
+    elif mode == "YouTube Channel Insights":
         channel = st.text_input("Enter Channel Name")
 
         if st.button("Analyze Channel"):
@@ -226,34 +206,31 @@ with main_col:
 
                 for v in videos["items"]:
                     vid = v["id"]["videoId"]
-                    stats = youtube.videos().list(
+                    data = youtube.videos().list(
                         part="statistics", id=vid
                     ).execute()["items"][0]["statistics"]
 
-                    views.append(int(stats.get("viewCount", 0)))
-                    likes += int(stats.get("likeCount", 0))
-                    comments.extend(fetch_comments(vid, 40))
+                    views.append(int(data.get("viewCount", 0)))
+                    likes += int(data.get("likeCount", 0))
+                    comments.extend(fetch_comments(vid, 50))
 
-                st.metric("Videos", len(videos["items"]))
-                st.metric("Comments", len(comments))
+                st.metric("Videos Analyzed", len(videos["items"]))
+                st.metric("Total Comments", len(comments))
                 st.metric("Total Views", f"{sum(views):,}")
                 st.metric("Total Likes", f"{likes:,}")
 
-                # Weekly / per-video comparison
                 fig, ax = plt.subplots(figsize=(6, 3))
-                ax.bar(range(len(views)), views, color=POS_COLOR)
-                ax.set_title("Views per Video (Recent Uploads)")
-                ax.set_xlabel("Video Index")
-                ax.set_ylabel("Views")
+                ax.bar(range(len(views)), sorted(views), color=POS_COLOR)
+                ax.set_title("Views per Video (Recent)")
                 st.pyplot(fig)
 
                 sentiments = [predict_sentiment(c) for c in comments]
                 show_sentiment_charts(sentiments)
 
-    # ======================================================
-    # 📁 CSV UPLOAD
-    # ======================================================
-    with tab3:
+    # ===============================
+    # CSV UPLOAD
+    # ===============================
+    else:
         file = st.file_uploader("Upload CSV", type="csv")
 
         if file:
@@ -263,25 +240,14 @@ with main_col:
                 except:
                     df = pd.read_csv(file, encoding="latin1")
 
-                df.columns = (
-                    df.columns.str.strip()
-                    .str.lower()
-                    .str.replace("\ufeff", "")
-                )
+                df.columns = df.columns.str.lower().str.strip()
 
-                st.success(f"CSV loaded: {len(df)} rows")
-                st.write("Detected columns:", list(df.columns))
+                text_cols = ["text", "tweet", "comment", "review", "content", "sentence"]
+                col = next((c for c in text_cols if c in df.columns), None)
 
-                text_cols = [
-                    "text", "tweet", "comment",
-                    "content", "review", "sentence"
-                ]
-
-                text_col = next((c for c in text_cols if c in df.columns), None)
-
-                if not text_col:
-                    st.error("No usable text column found.")
+                if not col:
+                    st.error("No text column found")
                 else:
-                    texts = df[text_col].astype(str).head(1000)
+                    texts = df[col].astype(str).head(2000)
                     sentiments = texts.apply(predict_sentiment)
                     show_sentiment_charts(sentiments)
