@@ -2,6 +2,6 @@ streamlit==1.37.1
 pandas
 matplotlib
 transformers==4.43.4
-torch
+torch==2.1.2+cpu
 google-api-python-client
 langdetect
