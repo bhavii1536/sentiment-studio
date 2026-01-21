@@ -1,11 +1,7 @@
-streamlit
+streamlit==1.37.1
 pandas
-numpy
 matplotlib
-seaborn
-emoji
-langdetect
-google-api-python-client
+transformers==4.43.4
 torch
-transformers
-sentencepiece
+google-api-python-client
+langdetect
