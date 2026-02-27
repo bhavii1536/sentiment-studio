@@ -97,15 +97,16 @@ with main_col:
 
             lang = detect(text)
 
-            # English → RoBERTa
+
             if lang == "en":
 
                 out = roberta_model(text[:512])[0]
 
-            # Tamil or Hindi → XLM-RoBERTa
+
             elif lang in ["ta", "hi"]:
 
                 out = xlm_model(text[:512])[0]
+
 
             else:
 
@@ -119,9 +120,11 @@ with main_col:
 
                 return "Negative"
 
+
             elif label in ["LABEL_1", "NEUTRAL"]:
 
                 return "Neutral"
+
 
             else:
 
@@ -134,7 +137,7 @@ with main_col:
 
 
     # ===============================
-    # ASPECTS
+    # ASPECTS (UNCHANGED)
     # ===============================
 
     PRODUCT_ASPECTS = {
@@ -229,17 +232,11 @@ with main_col:
             fig, ax = plt.subplots(figsize=(3.2, 3.2))
 
             ax.pie(
-
                 s,
-
                 labels=s.index,
-
                 autopct="%1.1f%%",
-
                 startangle=90,
-
                 colors=COLORS
-
             )
 
             ax.set_title("Sentiment Distribution")
@@ -275,7 +272,9 @@ with main_col:
     ])
 
 
+    # ===============================
     # TAB 1
+    # ===============================
 
     with tab1:
 
@@ -353,7 +352,9 @@ with main_col:
                 )
 
 
+    # ===============================
     # TAB 2
+    # ===============================
 
     with tab2:
 
@@ -364,15 +365,10 @@ with main_col:
 
 
             search = youtube.search().list(
-
                 q=channel_name,
-
                 part="snippet",
-
                 type="channel",
-
                 maxResults=1
-
             ).execute()
 
 
@@ -387,57 +383,24 @@ with main_col:
 
 
                 channel_data = youtube.channels().list(
-
                     part="snippet,statistics",
-
                     id=cid
-
                 ).execute()["items"][0]
 
 
                 channel_title = channel_data["snippet"]["title"]
 
 
-                channel_desc = channel_data["snippet"].get(
-
-                    "description",
-
-                    "No description"
-
-                )
+                channel_desc = channel_data["snippet"].get("description", "No description")
 
 
-                subs = int(
-
-                    channel_data["statistics"].get(
-
-                        "subscriberCount", 0
-
-                    )
-
-                )
+                subs = int(channel_data["statistics"].get("subscriberCount", 0))
 
 
-                total_views = int(
-
-                    channel_data["statistics"].get(
-
-                        "viewCount", 0
-
-                    )
-
-                )
+                total_views = int(channel_data["statistics"].get("viewCount", 0))
 
 
-                total_videos = int(
-
-                    channel_data["statistics"].get(
-
-                        "videoCount", 0
-
-                    )
-
-                )
+                total_videos = int(channel_data["statistics"].get("videoCount", 0))
 
 
                 st.subheader(f"📺 Channel: {channel_title}")
@@ -459,15 +422,10 @@ with main_col:
 
 
                 videos = youtube.search().list(
-
                     channelId=cid,
-
                     part="id",
-
                     type="video",
-
                     maxResults=25
-
                 ).execute()["items"]
 
 
@@ -487,106 +445,54 @@ with main_col:
 
 
                     data = youtube.videos().list(
-
                         part="snippet,statistics",
-
                         id=vid
-
                     ).execute()["items"][0]
 
 
                     title = data["snippet"]["title"]
 
 
-                    views = int(
-
-                        data["statistics"].get("viewCount", 0)
-
-                    )
+                    views = int(data["statistics"].get("viewCount", 0))
 
 
-                    likes = int(
-
-                        data["statistics"].get("likeCount", 0)
-
-                    )
+                    likes = int(data["statistics"].get("likeCount", 0))
 
 
                     total_likes += likes
 
 
-                    video_rows.append(
-
-                        {
-
-                            "Title": title,
-
-                            "Views": views
-
-                        }
-
-                    )
+                    video_rows.append({
+                        "Title": title,
+                        "Views": views
+                    })
 
 
-                    comments.extend(
-
-                        fetch_comments(vid, 40)
-
-                    )
+                    comments.extend(fetch_comments(vid, 40))
 
 
-                df_vid = pd.DataFrame(video_rows).sort_values(
-
-                    "Views",
-
-                    ascending=False
-
-                )
+                df_vid = pd.DataFrame(video_rows).sort_values("Views", ascending=False)
 
 
                 c1, c2 = st.columns(2)
 
 
-                c1.metric(
-
-                    "Total Comments Analyzed",
-
-                    len(comments)
-
-                )
+                c1.metric("Total Comments Analyzed", len(comments))
 
 
-                c2.metric(
-
-                    "Total Likes (Recent Videos)",
-
-                    f"{total_likes:,}"
-
-                )
+                c2.metric("Total Likes (Recent Videos)", f"{total_likes:,}")
 
 
                 st.subheader("📊 Views per Video (Recent)")
 
 
-                st.bar_chart(
-
-                    df_vid.set_index("Title")["Views"]
-
-                )
+                st.bar_chart(df_vid.set_index("Title")["Views"])
 
 
                 st.subheader("🎬 Video Titles & Views")
 
 
-                st.dataframe(
-
-                    df_vid,
-
-                    use_container_width=True,
-
-                    height=300
-
-                )
+                st.dataframe(df_vid, use_container_width=True, height=300)
 
 
                 sentiments = [
@@ -601,58 +507,33 @@ with main_col:
                 show_sentiment_charts(sentiments)
 
 
+    # ===============================
     # TAB 3
+    # ===============================
 
     with tab3:
 
-        file = st.file_uploader(
-
-            "Upload CSV",
-
-            type="csv"
-
-        )
+        file = st.file_uploader("Upload CSV", type="csv")
 
 
         if file and st.button("Analyze Dataset"):
 
 
-            df = pd.read_csv(
-
-                file,
-
-                encoding_errors="ignore"
-
-            )
+            df = pd.read_csv(file, encoding_errors="ignore")
 
 
             df.columns = (
-
                 df.columns
-
                 .str.lower()
-
                 .str.strip()
-
                 .str.replace("\ufeff", "")
-
             )
 
 
-            st.success(
-
-                f"CSV loaded: {len(df)} rows"
-
-            )
+            st.success(f"CSV loaded: {len(df)} rows")
 
 
-            st.write(
-
-                "Detected columns:",
-
-                list(df.columns)
-
-            )
+            st.write("Detected columns:", list(df.columns))
 
 
             TEXT_COLS = [
@@ -674,15 +555,7 @@ with main_col:
 
             text_col = next(
 
-                (
-
-                    c
-
-                    for c in TEXT_COLS
-
-                    if c in df.columns
-
-                ),
+                (c for c in TEXT_COLS if c in df.columns),
 
                 None
 
@@ -691,11 +564,7 @@ with main_col:
 
             if not text_col:
 
-                st.error(
-
-                    "❌ No text column detected."
-
-                )
+                st.error("❌ No text column detected.")
 
 
             else:
@@ -704,11 +573,7 @@ with main_col:
                 texts = df[text_col].astype(str).head(1000)
 
 
-                sentiments = texts.apply(
-
-                    predict_sentiment
-
-                )
+                sentiments = texts.apply(predict_sentiment)
 
 
                 show_sentiment_charts(sentiments)
